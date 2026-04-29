@@ -1,0 +1,19 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ApiToken {
+    id String @id @default(cuid())
+
+    secret String
+
+    createdAt DateTime @default(now())
+    expiresAt DateTime
+
+    @@map("api_tokens")
+}
