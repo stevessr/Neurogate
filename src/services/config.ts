@@ -30,7 +30,7 @@ function getEnvVar(key: string, defaultValue?: string): string {
 }
 
 const config: AppConfig = {
-    apiPort: parseInt(getEnvVar('API_PORT')),
+    apiPort: parseInt(getEnvVar('API_PORT', '8000'), 10),
     socksProxy: getEnvVar('SOCKS_PROXY', 'unset'),
     databaseUrl: getEnvVar('DATABASE_URL'),
 
