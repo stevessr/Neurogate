@@ -3,8 +3,8 @@
     "rootDir": "./src",
     "outDir": "./dist",
 
-    "module": "nodenext",
-    "target": "esnext",
+    "module": "commonjs",
+    // "target": "esnext",
     "lib": ["esnext"],
     "types": ["node"],
 

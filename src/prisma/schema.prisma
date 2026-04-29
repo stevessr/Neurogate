@@ -1,16 +1,17 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+    provider = "prisma-client"
+    output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+    provider = "postgresql"
 }
 
 model ApiToken {
     id String @id @default(cuid())
 
     secret String
+    owner  String @unique
 
     createdAt DateTime @default(now())
     expiresAt DateTime
