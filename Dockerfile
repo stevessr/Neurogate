@@ -36,6 +36,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/src/prisma ./src/prisma
 
+COPY --from=builder /app/src/prisma ./src/prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
 EXPOSE 8000
 
 CMD ["/bin/sh", "/app/entrypoint.sh"]
