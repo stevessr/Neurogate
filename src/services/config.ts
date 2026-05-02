@@ -4,7 +4,9 @@ type LogLevel = 'debug' | 'error' | 'fatal' | 'info' | 'silent' | 'trace' | 'war
 type NodeEnv = 'development' | 'production';
 
 type AppConfig = {
-    apiPort: number;
+    apiListenHost: string;
+    apiListenPort: number;
+    
     socksProxy?: string;
     databaseUrl: string;
 
@@ -30,7 +32,9 @@ function getEnvVar(key: string, defaultValue?: string): string {
 }
 
 const config: AppConfig = {
-    apiPort: parseInt(getEnvVar('API_PORT', '8000'), 10),
+    apiListenHost: getEnvVar('API_LISTEN_HOST', '0.0.0.0'),
+    apiListenPort: parseInt(getEnvVar('API_LISTEN_PORT', '8000'), 10),
+
     socksProxy: getEnvVar('SOCKS_PROXY', 'unset'),
     databaseUrl: getEnvVar('DATABASE_URL'),
 
