@@ -3,7 +3,9 @@ import config from "./services/config";
 import { apiTokenRoutes } from "./routes/api_token";
 import { apiTranslationRoutes } from "./routes/translations";
 
-const app = fastify();
+const app = fastify({
+    logger: true,
+});
 
 app.register(apiTokenRoutes, { prefix: '/v1' });
 app.register(apiTranslationRoutes, { prefix: '/v1/translations' });
