@@ -3,6 +3,8 @@ export enum ErrorCode {
     forbidden = 'forbidden',
     verificationFailed = 'verificationFailed',
     internalServerError = 'internalServerError',
+    termsAcceptanceRequired = 'termsAcceptanceRequired',
+    notFound = 'notFound',
 }
 
 export const ErrorResponseSchema = {

@@ -18,6 +18,9 @@ type AppConfig = {
     mozhiGoogleInstances: string[];
     openaiModels: string[];
 
+    availableTerms: string[];
+    translatorTerms: string[];
+
     logLevel: LogLevel;
     nodeEnv: NodeEnv;
 };
@@ -45,6 +48,9 @@ const config: AppConfig = {
     
     mozhiGoogleInstances: getEnvVar('MOZHI_GOOGLE_INSTANCES').split(';'),
     openaiModels: getEnvVar('OPENAI_MODELS').split(';'),
+
+    availableTerms: getEnvVar('AVAILABLE_TERMS', '').split(';'),
+    translatorTerms: getEnvVar('TRANSLATION_TOU', '').split(';'),
 
     logLevel: getEnvVar('LOG_LEVEL', 'info') as LogLevel,
     nodeEnv: getEnvVar('NODE_ENV', 'development') as NodeEnv,

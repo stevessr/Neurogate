@@ -3,6 +3,8 @@ import { ErrorCode, ErrorResponseSchema } from "../schemas/error";
 import { apiAuthMiddleware } from "../middlewares/api_auth";
 import logger from "../services/logger";
 import translateText from "../translators";
+import prisma from "../services/prisma";
+import config from "../services/config";
 
 export const apiTranslationRoutes: FastifyPluginAsync = async (app) => {
     app.post<{
@@ -43,6 +45,23 @@ export const apiTranslationRoutes: FastifyPluginAsync = async (app) => {
             ],
         },
         async (req, reply) => {
+            const consentData = await prisma.userConsents.findFirst({
+                where: { id: req.apiKeyOwner },
+            });
+            const requiredTerms = consentData
+                ? config.translatorTerms.filter(x => !consentData.acceptedTerms.includes(x))
+                : config.translatorTerms;
+            if (!consentData || requiredTerms.length > 0) {
+                return reply.status(403).send({
+                    error: {
+                        name: ErrorCode.termsAcceptanceRequired,
+                        message: `You need to accept ${requiredTerms.length} Terms of Use to use the translator.`,
+                        details: {
+                            requiredTerms,
+                        },
+                    },
+                });
+            }
             try {
                 const translation = await translateText(req.params.sourceLanguage, req.params.targetLanguage, req.body.text);
 
