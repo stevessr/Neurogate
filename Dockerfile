@@ -38,4 +38,4 @@ COPY --chown=node:node --from=builder /app/src/prisma ./src/prisma
 
 EXPOSE 8000
 
-CMD ["/app/entrypoint.sh"]
+CMD ["/bin/sh", "/app/entrypoint.sh"]
