@@ -1,5 +1,6 @@
 import { fetch } from 'undici';
 import config from '../services/config';
+import getProxy from '../services/proxy';
 
 export function isValidServerName(serverName: string): boolean {
     const portRegex = /^:\d{1,5}$/;
@@ -49,6 +50,7 @@ export async function resolveMatrixFederationUrl(serverName: string): Promise<st
         headers: {
             'User-Agent': config.userAgent,
         },
+        dispatcher: getProxy()!,
     });
 
     if (!response.ok) {

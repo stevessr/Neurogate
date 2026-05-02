@@ -1,4 +1,6 @@
+import { fetch } from 'undici';
 import config from "../services/config";
+import getProxy from "../services/proxy";
 import { resolveMatrixFederationUrl } from "./resolve_matrix_server";
 
 export type MatrixOpenIDData = {
@@ -14,6 +16,7 @@ export async function resolveMatrixOpenId(openid: MatrixOpenIDData): Promise<str
         headers: {
             'User-Agent': config.userAgent,
         },
+        dispatcher: getProxy()!,
     });
 
     if (!response.ok) return null;
