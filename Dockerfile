@@ -31,10 +31,11 @@ WORKDIR /app
 USER node
 
 COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node entrypoint.sh /app/entrypoint.sh
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/src/prisma ./src/prisma
 
 EXPOSE 8000
 
-CMD ["node", "--enable-source-maps", "dist/index"]
+CMD ["/app/entrypoint.sh"]
