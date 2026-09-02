@@ -18,3 +18,11 @@ model ApiToken {
 
     @@map("api_tokens")
 }
+
+model UserConsents {
+    id String @id
+
+    acceptedTerms String[] @default([])
+
+    @@map("user_consents")
+}
