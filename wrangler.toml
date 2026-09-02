@@ -1,0 +1,21 @@
+name = "neurogate"
+main = "src/worker.ts"
+compatibility_date = "2026-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
+
+# Recommended for production PostgreSQL access from Workers:
+#   npx wrangler hyperdrive create neurogate-db --connection-string="postgresql://..."
+# Then add the generated binding below and remove DATABASE_URL from Worker secrets/vars.
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<your-hyperdrive-config-id>"
+
+[vars]
+HTTP_USER_AGENT = "Neurogate/1.0 (Cloudflare Workers)"
+WORKERS_AI_MODELS = "@cf/meta/llama-3.1-8b-instruct-fast"
+OPENAI_MODELS = ""
+MOZHI_GOOGLE_INSTANCES = ""
+TRANSLATION_TOU = ""
