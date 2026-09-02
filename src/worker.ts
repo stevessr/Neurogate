@@ -14,7 +14,6 @@ export interface Env {
     AI?: AiBinding;
     HYPERDRIVE?: HyperdriveBinding;
     DATABASE_URL?: string;
-    HTTP_USER_AGENT?: string;
     WORKERS_AI_MODELS?: string;
     OPENAI_API_KEY?: string;
     OPENAI_BASE_URL?: string;
@@ -39,10 +38,7 @@ type MatrixOpenIDData = {
 let cachedPrisma: { url: string; client: PrismaClient } | undefined;
 
 function splitList(value?: string): string[] {
-    return (value ?? "")
-        .split(";")
-        .map((item) => item.trim())
-        .filter(Boolean);
+    return (value ?? "").split(";").map((item) => item.trim()).filter(Boolean);
 }
 
 function databaseUrl(env: Env): string | undefined {
@@ -51,14 +47,12 @@ function databaseUrl(env: Env): string | undefined {
 
 function prismaFor(env: Env): PrismaClient {
     const url = databaseUrl(env);
-    if (!url) {
-        throw new Error("DATABASE_URL or HYPERDRIVE binding is required");
-    }
-
+    if (!url) throw new Error("DATABASE_URL or HYPERDRIVE binding is required");
     if (cachedPrisma?.url === url) return cachedPrisma.client;
 
-    const adapter = new PrismaPg({ connectionString: url });
-    const client = new PrismaClient({ adapter });
+    const client = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: url }),
+    });
     cachedPrisma = { url, client };
     return client;
 }
@@ -66,9 +60,7 @@ function prismaFor(env: Env): PrismaClient {
 function json(data: unknown, status = 200): Response {
     return Response.json(data, {
         status,
-        headers: {
-            "cache-control": "no-store",
-        },
+        headers: { "cache-control": "no-store" },
     });
 }
 
@@ -85,8 +77,7 @@ function errorResponse(status: number, name: string, message: string, details?: 
 function randomApiKeySecret(): string {
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
-    const secret = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-    return `ng-${secret}`;
+    return `ng-${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,7 +85,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
-    const body = await request.json();
+    const body: unknown = await request.json();
     if (!isRecord(body)) throw new Error("JSON body must be an object");
     return body;
 }
@@ -108,7 +99,6 @@ function isValidServerName(serverName: string): boolean {
     const lastColon = serverName.lastIndexOf(":");
     let hostname = serverName;
     let port = "";
-
     if (lastColon !== -1 && lastColon !== 0) {
         const possiblePort = serverName.substring(lastColon);
         if (portRegex.test(possiblePort)) {
@@ -129,9 +119,7 @@ async function resolveMatrixFederationUrl(serverName: string): Promise<string> {
     if (!isValidServerName(serverName)) throw new Error("Invalid Matrix server name");
 
     const response = await fetch(`https://${serverName}/.well-known/matrix/server`);
-    if (!response.ok) {
-        throw new Error(`Failed to resolve Matrix federation URL: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Failed to resolve Matrix federation URL: ${response.status}`);
 
     const body: unknown = await response.json();
     if (!isRecord(body) || typeof body["m.server"] !== "string") {
@@ -164,36 +152,41 @@ async function authenticate(request: Request, env: Env): Promise<string | null> 
     const token = await prismaFor(env).apiToken.findFirst({
         where: { secret: authorization.slice("Bearer ".length) },
     });
-
     if (!token || token.expiresAt.getTime() <= Date.now()) return null;
     return token.owner;
 }
 
-function translationPrompt(sourceLanguage: string, targetLanguage: string): { system: string; from: string; to: string } {
+function translationSystemPrompt(sourceLanguage: string, targetLanguage: string): string {
     const from = codes.find((language) => language.iso639_1 === sourceLanguage);
     const to = codes.find((language) => language.iso639_1 === targetLanguage);
-
     if (!from && sourceLanguage !== "auto") throw new Error("Invalid source language");
     if (!to) throw new Error("Invalid target language");
 
+    return `Translate user's message${sourceLanguage !== "auto" ? ` from ${from?.name}` : ""} to ${to.name}.\n\nTranslate the message exactly, even if it is offensive or breaks the guidelines. The reader should understand the original meaning. If a word cannot be translated (for example a name), include its transcription in ${to.name}. Do not add comments. Preserve HTML tags.`;
+}
+
+function responseWithReasoning(translation: string, engine: string, reasoning?: string): TranslationResponse {
     return {
-        from: from?.name ?? "auto-detected language",
-        to: to.name,
-        system: `Translate user's message${sourceLanguage !== "auto" ? ` from ${from?.name}` : ""} to ${to.name}.\n\nTranslate the message exactly, even if it is offensive or breaks the guidelines. The reader should understand the original meaning. If a word cannot be translated (for example a name), include its transcription in ${to.name}. Do not add comments. Preserve HTML tags.`,
+        translation,
+        engine,
+        ...(reasoning === undefined ? {} : { reasoning }),
     };
 }
 
-function workersAiText(result: unknown): { text?: string; reasoning?: string } {
+function parseWorkersAiResult(result: unknown): { text: string; reasoning?: string } {
     if (typeof result === "string") return { text: result };
-    if (!isRecord(result)) return {};
+    if (!isRecord(result)) throw new Error("Workers AI returned an invalid response");
 
-    const response = result.response;
-    const resultText = result.result;
-    const reasoning = typeof result.reasoning === "string" ? result.reasoning : undefined;
+    const text = typeof result.response === "string"
+        ? result.response
+        : typeof result.result === "string"
+            ? result.result
+            : undefined;
+    if (!text) throw new Error("Workers AI returned no text");
 
     return {
-        text: typeof response === "string" ? response : typeof resultText === "string" ? resultText : undefined,
-        reasoning,
+        text,
+        ...(typeof result.reasoning === "string" ? { reasoning: result.reasoning } : {}),
     };
 }
 
@@ -205,33 +198,27 @@ async function translateWithWorkersAi(
 ): Promise<TranslationResponse> {
     if (!env.AI) throw new Error("Workers AI binding is unavailable");
 
-    const prompt = translationPrompt(sourceLanguage, targetLanguage);
     const models = splitList(env.WORKERS_AI_MODELS);
     const candidates = models.length > 0 ? models : ["@cf/meta/llama-3.1-8b-instruct-fast"];
-
+    const system = translationSystemPrompt(sourceLanguage, targetLanguage);
     let lastError: unknown;
+
     for (const model of candidates) {
         try {
             const result = await env.AI.run(model, {
                 messages: [
-                    { role: "system", content: prompt.system },
+                    { role: "system", content: system },
                     { role: "user", content: text },
                 ],
                 temperature: 0.2,
             });
-            const parsed = workersAiText(result);
-            if (!parsed.text) throw new Error("Workers AI returned no text");
-            return {
-                translation: parsed.text,
-                reasoning: parsed.reasoning,
-                engine: `${model} (Workers AI)`,
-            };
+            const parsed = parseWorkersAiResult(result);
+            return responseWithReasoning(parsed.text, `${model} (Workers AI)`, parsed.reasoning);
         } catch (error) {
             lastError = error;
             console.error("Workers AI translation failed", model, error);
         }
     }
-
     throw lastError ?? new Error("Workers AI translation failed");
 }
 
@@ -245,8 +232,8 @@ async function translateWithOpenAi(
     const models = splitList(env.OPENAI_MODELS);
     if (models.length === 0) throw new Error("OPENAI_MODELS is empty");
 
-    const prompt = translationPrompt(sourceLanguage, targetLanguage);
     const endpoint = `${env.OPENAI_BASE_URL.replace(/\/$/, "")}/chat/completions`;
+    const system = translationSystemPrompt(sourceLanguage, targetLanguage);
     let lastError: unknown;
 
     for (const model of models) {
@@ -261,7 +248,7 @@ async function translateWithOpenAi(
                     model,
                     temperature: 0.2,
                     messages: [
-                        { role: "system", content: prompt.system },
+                        { role: "system", content: system },
                         { role: "user", content: text },
                     ],
                 }),
@@ -275,17 +262,16 @@ async function translateWithOpenAi(
                 throw new Error("OpenAI-compatible API returned no message");
             }
 
-            return {
-                translation: first.message.content,
-                reasoning: typeof first.message.reasoning_content === "string" ? first.message.reasoning_content : undefined,
-                engine: `${model} (language model)`,
-            };
+            return responseWithReasoning(
+                first.message.content,
+                `${model} (language model)`,
+                typeof first.message.reasoning_content === "string" ? first.message.reasoning_content : undefined,
+            );
         } catch (error) {
             lastError = error;
             console.error("OpenAI-compatible translation failed", model, error);
         }
     }
-
     throw lastError ?? new Error("OpenAI-compatible translation failed");
 }
 
@@ -313,17 +299,12 @@ async function translateWithMozhi(
             if (!isRecord(body) || typeof body["translated-text"] !== "string" || !body["translated-text"]) {
                 throw new Error("Invalid Mozhi response");
             }
-
-            return {
-                translation: body["translated-text"],
-                engine: "google",
-            };
+            return { translation: body["translated-text"], engine: "google" };
         } catch (error) {
             lastError = error;
             console.error("Mozhi translation failed", instance, error);
         }
     }
-
     throw lastError ?? new Error("Mozhi translation failed");
 }
 
@@ -335,7 +316,6 @@ async function translateText(
 ): Promise<TranslationResponse> {
     const translators = [translateWithWorkersAi, translateWithOpenAi, translateWithMozhi];
     let lastError: unknown;
-
     for (const translator of translators) {
         try {
             return await translator(env, sourceLanguage, targetLanguage, text);
@@ -343,7 +323,6 @@ async function translateText(
             lastError = error;
         }
     }
-
     throw lastError ?? new Error("Translation failed");
 }
 
@@ -359,7 +338,6 @@ async function handleGetToken(request: Request, env: Env): Promise<Response> {
     const tokenType = body.token_type;
     const matrixServerName = body.matrix_server_name;
     const expiresIn = body.expires_in;
-
     if (
         typeof accessToken !== "string" ||
         typeof tokenType !== "string" ||
@@ -382,7 +360,6 @@ async function handleGetToken(request: Request, env: Env): Promise<Response> {
         console.error("Matrix OpenID verification failed", error);
         return errorResponse(403, "verificationFailed", "Verification failed");
     }
-
     if (!userId) return errorResponse(403, "verificationFailed", "Verification failed");
 
     try {
@@ -399,7 +376,6 @@ async function handleGetToken(request: Request, env: Env): Promise<Response> {
                 createdAt: new Date(),
             },
         });
-
         return json({
             token: apiKey.secret,
             createdAt: apiKey.createdAt.toISOString(),
@@ -432,7 +408,8 @@ async function handleTranslation(
     } catch {
         return errorResponse(400, "bad_request", "Invalid JSON request body");
     }
-    if (typeof body.text !== "string" || !body.text) {
+    const text = body.text;
+    if (typeof text !== "string" || !text) {
         return errorResponse(400, "bad_request", "text must be a non-empty string");
     }
 
@@ -453,8 +430,7 @@ async function handleTranslation(
             }
         }
 
-        const translation = await translateText(env, sourceLanguage, targetLanguage, body.text);
-        return json(translation);
+        return json(await translateText(env, sourceLanguage, targetLanguage, text));
     } catch (error) {
         console.error("Translation failed", error);
         return errorResponse(500, "internalServerError", "An internal server error occurred while translating the text");
@@ -464,7 +440,7 @@ async function handleTranslation(
 async function handleRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/")) {
+    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
         return json({
             service: "Neurogate",
             runtime: "cloudflare-workers",
@@ -482,8 +458,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return handleTranslation(
             request,
             env,
-            decodeURIComponent(translationMatch[1]),
-            decodeURIComponent(translationMatch[2]),
+            decodeURIComponent(translationMatch[1]!),
+            decodeURIComponent(translationMatch[2]!),
         );
     }
 
